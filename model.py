@@ -3,7 +3,8 @@ from architecture import shufflenet
 
 
 MOMENTUM = 0.9
-USE_NESTEROV = False
+USE_NESTEROV = True
+MOVING_AVERAGE_DECAY = 0.993
 
 
 def model_fn(features, labels, mode, params):
@@ -17,12 +18,10 @@ def model_fn(features, labels, mode, params):
         features['images'], num_classes=params['num_classes'],
         depth_multiplier=params['depth_multiplier']
     )
-
-    if not is_training:
-        predictions = {
-            'probabilities': tf.nn.softmax(logits, axis=1),
-            'classes': tf.reduce_max(logits, axis=1)
-        }
+    predictions = {
+        'probabilities': tf.nn.softmax(logits, axis=1),
+        'classes': tf.argmax(logits, axis=1, output_type=tf.int32)
+    }
 
     if mode == tf.estimator.ModeKeys.PREDICT:
         export_outputs = tf.estimator.export.PredictOutput({
@@ -48,12 +47,12 @@ def model_fn(features, labels, mode, params):
 
     if mode == tf.estimator.ModeKeys.EVAL:
         eval_metric_ops = {
-            'accuracy': tf.metrics.accuracy(labels['labels'], predictions['classes'])
+            'accuracy': tf.metrics.accuracy(labels['labels'], predictions['classes']),
+            'top5_accuracy': tf.metrics.mean(tf.to_float(tf.nn.in_top_k(
+                predictions=predictions['probabilities'], targets=labels['labels'], k=5
+            )))
         }
-        return tf.estimator.EstimatorSpec(
-            mode, loss=total_loss,
-            eval_metric_ops=eval_metric_ops
-        )
+        return tf.estimator.EstimatorSpec(mode, loss=total_loss, eval_metric_ops=eval_metric_ops)
 
     assert mode == tf.estimator.ModeKeys.TRAIN
     with tf.variable_scope('learning_rate'):
@@ -77,9 +76,18 @@ def model_fn(features, labels, mode, params):
         tf.summary.histogram(v.name[:-2] + '_grad_hist', g)
 
     with tf.name_scope('evaluation_ops'):
-        predicted_labels = tf.argmax(logits, axis=1, output_type=tf.int32)
-        train_accuracy = tf.reduce_mean(tf.to_float(tf.equal(labels['labels'], predicted_labels)), axis=0)
+        train_accuracy = tf.reduce_mean(tf.to_float(tf.equal(
+            labels['labels'], predictions['classes']
+        )), axis=0)
+        train_top5_accuracy = tf.reduce_mean(tf.to_float(tf.nn.in_top_k(
+            predictions=predictions['probabilities'], targets=labels['labels'], k=5
+        )), axis=0)
     tf.summary.scalar('train_accuracy', train_accuracy)
+    tf.summary.scalar('train_top5_accuracy', train_top5_accuracy)
+
+    with tf.control_dependencies([train_op]), tf.name_scope('ema'):
+        ema = tf.train.ExponentialMovingAverage(decay=MOVING_AVERAGE_DECAY, num_updates=global_step)
+        train_op = ema.apply(tf.trainable_variables())
 
     return tf.estimator.EstimatorSpec(mode, loss=total_loss, train_op=train_op)
 
@@ -92,3 +100,20 @@ def add_weight_decay(weight_decay):
     for w in weights:
         value = tf.multiply(weight_decay, tf.nn.l2_loss(w))
         tf.add_to_collection(tf.GraphKeys.REGULARIZATION_LOSSES, value)
+
+
+class RestoreMovingAverageHook(tf.train.SessionRunHook):
+    def __init__(self, model_dir):
+        super(RestoreMovingAverageHook, self).__init__()
+        self.model_dir = model_dir
+
+    def begin(self):
+        ema = tf.train.ExponentialMovingAverage(decay=MOVING_AVERAGE_DECAY)
+        variables_to_restore = ema.variables_to_restore()
+        self.load_ema = tf.contrib.framework.assign_from_checkpoint_fn(
+            tf.train.latest_checkpoint(self.model_dir), variables_to_restore
+        )
+
+    def after_create_session(self, sess, coord):
+        tf.logging.info('Loading EMA weights...')
+        self.load_ema(sess)

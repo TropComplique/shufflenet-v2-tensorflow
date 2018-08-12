@@ -8,7 +8,8 @@ BATCH_NORM_EPSILON = 1e-3
 
 def shufflenet(images, num_classes, depth_multiplier='1.0'):
     """
-    This is an implementation of MobileNet v2.
+    This is an implementation of ShuffleNet v2:
+    https://arxiv.org/abs/1807.11164
 
     Arguments:
         images: a float tensor with shape [batch_size, image_height, image_width, 3],
@@ -33,7 +34,7 @@ def shufflenet(images, num_classes, depth_multiplier='1.0'):
     with tf.name_scope('standardize_input'):
         x = (2.0 * images) - 1.0
 
-    with tf.variable_scope(' ShuffleNetV2'):
+    with tf.variable_scope('ShuffleNetV2'):
         params = {
             'padding': 'SAME', 'activation_fn': tf.nn.relu,
             'normalizer_fn': batch_norm, 'data_format': 'NHWC',
