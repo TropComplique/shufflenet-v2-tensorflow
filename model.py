@@ -3,7 +3,7 @@ from architecture import shufflenet
 
 
 MOMENTUM = 0.9
-USE_NESTEROV = True
+USE_NESTEROV = False
 MOVING_AVERAGE_DECAY = 0.993
 
 
@@ -15,7 +15,8 @@ def model_fn(features, labels, mode, params):
 
     is_training = mode == tf.estimator.ModeKeys.TRAIN
     logits = shufflenet(
-        features['images'], num_classes=params['num_classes'],
+        features['images'], is_training, 
+        num_classes=params['num_classes'],
         depth_multiplier=params['depth_multiplier']
     )
     predictions = {
@@ -37,8 +38,9 @@ def model_fn(features, labels, mode, params):
         add_weight_decay(params['weight_decay'])
         regularization_loss = tf.losses.get_regularization_loss()
 
-    with tf.name_scope('cross_entropy_loss'):
-        loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=labels['labels'], logits=logits)
+    with tf.name_scope('cross_entropy'):
+        losses = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=labels['labels'], logits=logits)
+        loss = tf.reduce_mean(losses, axis=0)
         tf.losses.add_loss(loss)
 
     total_loss = tf.losses.get_total_loss(add_regularization_losses=True)
@@ -63,13 +65,12 @@ def model_fn(features, labels, mode, params):
             power=1.0
         )  # linear decay
         tf.summary.scalar('learning_rate', learning_rate)
-
-    with tf.variable_scope('optimizer'):
+    
+    update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+    with tf.control_dependencies(update_ops), tf.variable_scope('optimizer'):
         optimizer = tf.train.MomentumOptimizer(learning_rate, momentum=MOMENTUM, use_nesterov=USE_NESTEROV)
         grads_and_vars = optimizer.compute_gradients(total_loss)
-        minimize_op = optimizer.apply_gradients(grads_and_vars, global_step)
-        update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-        train_op = tf.group(minimize_op, update_ops)
+        train_op = optimizer.apply_gradients(grads_and_vars, global_step)
 
     for g, v in grads_and_vars:
         tf.summary.histogram(v.name[:-2] + '_hist', v)
@@ -84,7 +85,7 @@ def model_fn(features, labels, mode, params):
         )), axis=0)
     tf.summary.scalar('train_accuracy', train_accuracy)
     tf.summary.scalar('train_top5_accuracy', train_top5_accuracy)
-
+    
     with tf.control_dependencies([train_op]), tf.name_scope('ema'):
         ema = tf.train.ExponentialMovingAverage(decay=MOVING_AVERAGE_DECAY, num_updates=global_step)
         train_op = ema.apply(tf.trainable_variables())

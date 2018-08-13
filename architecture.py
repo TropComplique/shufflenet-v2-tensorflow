@@ -6,7 +6,7 @@ BATCH_NORM_MOMENTUM = 0.997
 BATCH_NORM_EPSILON = 1e-3
 
 
-def shufflenet(images, num_classes, depth_multiplier='1.0'):
+def shufflenet(images, is_training, num_classes=1000, depth_multiplier='1.0'):
     """
     This is an implementation of ShuffleNet v2:
     https://arxiv.org/abs/1807.11164
@@ -14,6 +14,7 @@ def shufflenet(images, num_classes, depth_multiplier='1.0'):
     Arguments:
         images: a float tensor with shape [batch_size, image_height, image_width, 3],
             a batch of RGB images with pixel values in the range [0, 1].
+        is_training: a boolean.
         num_classes: an integer.
         depth_multiplier: a string, possible values are '0.5', '1.0', '1.5', and '2.0'.
     Returns:
@@ -25,6 +26,7 @@ def shufflenet(images, num_classes, depth_multiplier='1.0'):
     def batch_norm(x):
         x = tf.layers.batch_normalization(
             x, axis=3, center=True, scale=True,
+            training=is_training,
             momentum=BATCH_NORM_MOMENTUM,
             epsilon=BATCH_NORM_EPSILON,
             fused=True, name='batch_norm'
@@ -48,7 +50,7 @@ def shufflenet(images, num_classes, depth_multiplier='1.0'):
             with tf.variable_scope('Stage2'):
                 x, y = basic_unit_with_downsampling(x, out_channels=initial_depth)
                 for j in range(3):
-                    with tf.variable_scope('unit_%d' % (j + 1)):
+                    with tf.variable_scope('unit_%d' % (j + 2)):
                         x, y = concat_shuffle_split(x, y)
                         x = basic_unit(x)
                 x = tf.concat([x, y], axis=3)
@@ -56,7 +58,7 @@ def shufflenet(images, num_classes, depth_multiplier='1.0'):
             with tf.variable_scope('Stage3'):
                 x, y = basic_unit_with_downsampling(x)
                 for j in range(7):
-                    with tf.variable_scope('unit_%d' % (j + 1)):
+                    with tf.variable_scope('unit_%d' % (j + 2)):
                         x, y = concat_shuffle_split(x, y)
                         x = basic_unit(x)
                 x = tf.concat([x, y], axis=3)
@@ -64,7 +66,7 @@ def shufflenet(images, num_classes, depth_multiplier='1.0'):
             with tf.variable_scope('Stage4'):
                 x, y = basic_unit_with_downsampling(x)
                 for j in range(3):
-                    with tf.variable_scope('unit_%d' % (j + 1)):
+                    with tf.variable_scope('unit_%d' % (j + 2)):
                         x, y = concat_shuffle_split(x, y)
                         x = basic_unit(x)
                 x = tf.concat([x, y], axis=3)
@@ -77,7 +79,7 @@ def shufflenet(images, num_classes, depth_multiplier='1.0'):
 
     logits = slim.fully_connected(
         x, num_classes, activation_fn=None, scope='classifier',
-        weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.001)
+        weights_initializer=tf.contrib.layers.xavier_initializer()
     )
     return logits
 
@@ -91,7 +93,7 @@ def concat_shuffle_split(x, y):
 
         z = tf.stack([x, y], axis=3)  # shape [batch_size, height, width, 2, depth]
         z = tf.transpose(z, [0, 1, 2, 4, 3])
-        z = tf.reshape(z, [batch_size, height, width, depth])
+        z = tf.reshape(z, [batch_size, height, width, 2*depth])
         x, y = tf.split(z, num_or_size_splits=2, axis=3)
         return x, y
 
@@ -109,13 +111,13 @@ def basic_unit_with_downsampling(x, out_channels=None):
         in_channels = x.shape[3].value
         out_channels = 2 * in_channels if out_channels is None else out_channels
 
-        x = slim.conv2d(x, in_channels, (1, 1), stride=1, scope='conv1x1_before')
-        x = depthwise_conv(x, kernel=3, stride=2, activation_fn=None, scope='depthwise')
-        x = slim.conv2d(x, out_channels // 2, (1, 1), stride=1, scope='conv1x1_after')
+        y = slim.conv2d(x, in_channels, (1, 1), stride=1, scope='conv1x1_before')
+        y = depthwise_conv(y, kernel=3, stride=2, activation_fn=None, scope='depthwise')
+        y = slim.conv2d(y, out_channels // 2, (1, 1), stride=1, scope='conv1x1_after')
 
         with tf.variable_scope('second_branch'):
             x = depthwise_conv(x, kernel=3, stride=2, activation_fn=None, scope='depthwise')
-            y = slim.conv2d(x, out_channels // 2, (1, 1), stride=1, scope='conv1x1_after')
+            x = slim.conv2d(x, out_channels // 2, (1, 1), stride=1, scope='conv1x1_after')
             return x, y
 
 

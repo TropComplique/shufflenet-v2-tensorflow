@@ -17,6 +17,7 @@ class Pipeline:
             is_training: a boolean.
             batch_size, num_epochs, num_gpus: integers.
         """
+        self.is_training = is_training
 
         # get the number of images in the dataset
         def get_num_samples(filename):
@@ -27,6 +28,7 @@ class Pipeline:
             assert num_examples_in_file > 0
             num_examples += num_examples_in_file
         assert num_examples > 0
+        self.num_examples = num_examples
 
         # read the files in parallel
         dataset = tf.data.Dataset.from_tensor_slices(filenames)
@@ -57,7 +59,6 @@ class Pipeline:
         dataset = dataset.prefetch(buffer_size=tf.contrib.data.AUTOTUNE)
 
         self.dataset = dataset
-        self.is_training = is_training
 
     def parse_and_preprocess(self, example_proto):
         """What this function does:
@@ -97,6 +98,7 @@ class Pipeline:
             image = self.augmentation(image_as_string, boxes)
         else:
             image = tf.image.decode_jpeg(image_as_string, channels=3)
+            image = (1.0 / 255.0) * tf.to_float(image)
             image = resize_keeping_aspect_ratio(image, MIN_DIMENSION)
             image = central_crop(image, crop_height=IMAGE_SIZE, crop_width=IMAGE_SIZE)
 
@@ -116,6 +118,7 @@ class Pipeline:
             image, [IMAGE_SIZE, IMAGE_SIZE],
             method=RESIZE_METHOD
         )
+        image = (1.0 / 255.0) * tf.to_float(image)
 
         # note that color augmentations are very slow!
         image = random_color_manipulations(image, probability=0.05, grayscale_probability=0.01)
@@ -148,7 +151,7 @@ def resize_keeping_aspect_ratio(image, min_dimension):
 def get_random_crop(image_as_string, boxes):
 
     distorted_bounding_box = tf.image.sample_distorted_bounding_box(
-        tf.image.extract_jpeg_shape(image_buffer),
+        tf.image.extract_jpeg_shape(image_as_string),
         bounding_boxes=tf.expand_dims(boxes, axis=0),
         min_object_covered=0.5,
         aspect_ratio_range=[0.75, 1.33],
@@ -207,21 +210,21 @@ def random_color_manipulations(image, probability=0.1, grayscale_probability=0.1
     return image
 
 
-def distort_color_fast(image, scope=None):
-  with tf.name_scope(scope, 'distort_color', [image]):
-    br_delta = random_ops.random_uniform([], -32./255., 32./255., seed=None)
-    cb_factor = random_ops.random_uniform(
-        [], -FLAGS.cb_distortion_range, FLAGS.cb_distortion_range, seed=None)
-    cr_factor = random_ops.random_uniform(
-        [], -FLAGS.cr_distortion_range, FLAGS.cr_distortion_range, seed=None)
+# def distort_color_fast(image, scope=None):
+#   with tf.name_scope(scope, 'distort_color', [image]):
+#     br_delta = random_ops.random_uniform([], -32./255., 32./255., seed=None)
+#     cb_factor = random_ops.random_uniform(
+#         [], -FLAGS.cb_distortion_range, FLAGS.cb_distortion_range, seed=None)
+#     cr_factor = random_ops.random_uniform(
+#         [], -FLAGS.cr_distortion_range, FLAGS.cr_distortion_range, seed=None)
 
-    channels = tf.split(axis=2, num_or_size_splits=3, value=image)
-    red_offset = 1.402 * cr_factor + br_delta
-    green_offset = -0.344136 * cb_factor - 0.714136 * cr_factor + br_delta
-    blue_offset = 1.772 * cb_factor + br_delta
-    channels[0] += red_offset
-    channels[1] += green_offset
-    channels[2] += blue_offset
-    image = tf.concat(axis=2, values=channels)
-    image = tf.clip_by_value(image, 0., 1.)
-    return image
+#     channels = tf.split(axis=2, num_or_size_splits=3, value=image)
+#     red_offset = 1.402 * cr_factor + br_delta
+#     green_offset = -0.344136 * cb_factor - 0.714136 * cr_factor + br_delta
+#     blue_offset = 1.772 * cb_factor + br_delta
+#     channels[0] += red_offset
+#     channels[1] += green_offset
+#     channels[2] += blue_offset
+#     image = tf.concat(axis=2, values=channels)
+#     image = tf.clip_by_value(image, 0., 1.)
+#     return image

@@ -3,6 +3,7 @@ import os
 from PIL import Image
 import tensorflow as tf
 import json
+import numpy as np
 import shutil
 import random
 import pandas as pd
@@ -29,10 +30,10 @@ python create_tfrecords.py \
 
 def make_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-i', '--image_dir', type=str)
-    parser.add_argument('-a', '--annotations_dir', type=str)
+    parser.add_argument('-m', '--metadata_file', type=str)
     parser.add_argument('-o', '--output', type=str)
     parser.add_argument('-l', '--labels', type=str)
+    parser.add_argument('-b', '--boxes', type=str, default='')
     parser.add_argument('-s', '--num_shards', type=int, default=1)
     return parser.parse_args()
 
@@ -54,17 +55,23 @@ def dict_to_tf_example(image_path, integer_label, boxes=None):
     # check image format
     encoded_jpg_io = io.BytesIO(encoded_jpg)
     image = Image.open(encoded_jpg_io)
-    if image.mode != 'RGB':
+    if image.mode == 'L':  # if gray
+        rgb_image = np.stack(3*[np.array(image)], axis=2)
+        encoded_jpg = to_jpeg_bytes(rgb_image)
+        encoded_jpg_io = io.BytesIO(encoded_jpg)
+        image = Image.open(encoded_jpg_io)
+    elif image.mode != 'RGB':
         return None
     if image.format != 'JPEG':
         return None
+    assert image.mode == 'RGB'
 
     assert image.size[0] > 1 and image.size[1] > 1
     assert (0 <= integer_label) and (integer_label <= 999)
 
     feature = {
         'image': _bytes_feature(encoded_jpg),
-        'label': _int64_list_feature(integer_label)
+        'label': _int64_feature(integer_label)
     }
 
     if boxes is not None:
@@ -103,16 +110,22 @@ def _float_list_feature(value):
     return tf.train.Feature(float_list=tf.train.FloatList(value=value))
 
 
-def _int64_list_feature(value):
-    return tf.train.Feature(int64_list=tf.train.Int64List(value=value))
+def _int64_feature(value):
+    return tf.train.Feature(int64_list=tf.train.Int64List(value=[value]))
+
+
+def to_jpeg_bytes(array):
+    image = Image.fromarray(array)
+    tmp = io.BytesIO()
+    image.save(tmp, format='jpeg')
+    return tmp.getvalue()
 
 
 def main():
     ARGS = make_args()
 
     with open(ARGS.labels, 'r') as f:
-        content = f.readlines()
-        label_encoder = {line.strip(): i for i, line in enumerate(content) if line.strip()}
+        label_encoder = json.load(f)
     assert len(label_encoder) > 0
     print('Number of classes:', len(label_encoder))
 
@@ -121,8 +134,14 @@ def main():
     print('Number of images:', len(metadata))
 
     num_shards = ARGS.num_shards
+    num_examples = len(metadata)
     shard_size = math.ceil(num_examples/num_shards)
     print('Number of images per shard:', shard_size)
+    
+    bounding_boxes = None
+    if len(ARGS.boxes) > 0:
+        bounding_boxes = np.load(ARGS.boxes)[()]
+        print('Number of images with boxes:', len(bounding_boxes))
 
     output_dir = ARGS.output
     shutil.rmtree(output_dir, ignore_errors=True)
@@ -134,11 +153,11 @@ def main():
     for T in tqdm(metadata.itertuples()):
 
         if num_examples_written == 0:
-            shard_path = os.path.join(output_dir, 'shard-%05d.tfrecords' % shard_id)
+            shard_path = os.path.join(output_dir, 'shard-%04d.tfrecords' % shard_id)
             writer = tf.python_io.TFRecordWriter(shard_path)
 
         image_path = T.path  # absolute path to an image
-        integer_label = label_encoder[T.wordnet_label]
+        integer_label = label_encoder[T.wordnet_id]
         boxes = None
         if bounding_boxes is not None:
             boxes = bounding_boxes.get(T.just_name, np.empty((0, 4), dtype='float32'))
@@ -158,7 +177,8 @@ def main():
     # this happens if num_examples % num_shards != 0
     if num_examples_written != 0:
         writer.close()
-
+    
+    print('Number of skipped images:', num_skipped_images)
     print('Result is here:', ARGS.output)
 
 
