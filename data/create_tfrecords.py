@@ -5,7 +5,6 @@ import tensorflow as tf
 import json
 import numpy as np
 import shutil
-import random
 import pandas as pd
 import math
 import argparse
@@ -14,17 +13,15 @@ from tqdm import tqdm
 
 """
 The purpose of this script is to create a set of .tfrecords files
-from a folder of images and a folder of annotations.
-
-Labels text file contains a list of all label names.
-One label name per line. Number of line - label integer encoding.
+using a table that contains paths to images and their labels.
 
 Example of use:
 python create_tfrecords.py \
     --metadata_file=training.csv \
     --output=/mnt/datasets/imagenet/train_shards/ \
-    --labels=integer_encoding.txt \
-    --num_shards=100
+    --labels=integer_encoding.json \
+    --boxes=boxes.npy \
+    --num_shards=1000
 """
 
 
@@ -55,7 +52,7 @@ def dict_to_tf_example(image_path, integer_label, boxes=None):
     # check image format
     encoded_jpg_io = io.BytesIO(encoded_jpg)
     image = Image.open(encoded_jpg_io)
-    if image.mode == 'L':  # if gray
+    if image.mode == 'L':  # if grayscale
         rgb_image = np.stack(3*[np.array(image)], axis=2)
         encoded_jpg = to_jpeg_bytes(rgb_image)
         encoded_jpg_io = io.BytesIO(encoded_jpg)
@@ -137,7 +134,7 @@ def main():
     num_examples = len(metadata)
     shard_size = math.ceil(num_examples/num_shards)
     print('Number of images per shard:', shard_size)
-    
+
     bounding_boxes = None
     if len(ARGS.boxes) > 0:
         bounding_boxes = np.load(ARGS.boxes)[()]
@@ -158,7 +155,7 @@ def main():
 
         image_path = T.path  # absolute path to an image
         integer_label = label_encoder[T.wordnet_id]
-        boxes = None
+        boxes = None  # validation images don't have boxes
         if bounding_boxes is not None:
             boxes = bounding_boxes.get(T.just_name, np.empty((0, 4), dtype='float32'))
 
@@ -177,7 +174,7 @@ def main():
     # this happens if num_examples % num_shards != 0
     if num_examples_written != 0:
         writer.close()
-    
+
     print('Number of skipped images:', num_skipped_images)
     print('Result is here:', ARGS.output)
 

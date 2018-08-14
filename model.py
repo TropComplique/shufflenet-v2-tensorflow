@@ -3,7 +3,7 @@ from architecture import shufflenet
 
 
 MOMENTUM = 0.9
-USE_NESTEROV = False
+USE_NESTEROV = True
 MOVING_AVERAGE_DECAY = 0.993
 
 
@@ -15,7 +15,7 @@ def model_fn(features, labels, mode, params):
 
     is_training = mode == tf.estimator.ModeKeys.TRAIN
     logits = shufflenet(
-        features['images'], is_training, 
+        features['images'], is_training,
         num_classes=params['num_classes'],
         depth_multiplier=params['depth_multiplier']
     )
@@ -65,7 +65,7 @@ def model_fn(features, labels, mode, params):
             power=1.0
         )  # linear decay
         tf.summary.scalar('learning_rate', learning_rate)
-    
+
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
     with tf.control_dependencies(update_ops), tf.variable_scope('optimizer'):
         optimizer = tf.train.MomentumOptimizer(learning_rate, momentum=MOMENTUM, use_nesterov=USE_NESTEROV)
@@ -85,7 +85,7 @@ def model_fn(features, labels, mode, params):
         )), axis=0)
     tf.summary.scalar('train_accuracy', train_accuracy)
     tf.summary.scalar('train_top5_accuracy', train_top5_accuracy)
-    
+
     with tf.control_dependencies([train_op]), tf.name_scope('ema'):
         ema = tf.train.ExponentialMovingAverage(decay=MOVING_AVERAGE_DECAY, num_updates=global_step)
         train_op = ema.apply(tf.trainable_variables())

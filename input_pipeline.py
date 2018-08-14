@@ -6,29 +6,18 @@ NUM_FILES_READ_IN_PARALLEL = 10
 NUM_PARALLEL_CALLS = 8
 RESIZE_METHOD = tf.image.ResizeMethod.BILINEAR
 IMAGE_SIZE = 224  # this will be used for training and evaluation
-MIN_DIMENSION = 256
+MIN_DIMENSION = 256  # when evaluating, resize to this size before doing central crop
 
 
 class Pipeline:
-    def __init__(self, filenames, is_training, batch_size, num_epochs, num_gpus):
+    def __init__(self, filenames, is_training, batch_size, num_epochs):
         """
         Arguments:
             filenames: a list of strings, paths to tfrecords files.
             is_training: a boolean.
-            batch_size, num_epochs, num_gpus: integers.
+            batch_size, num_epochs: integers.
         """
         self.is_training = is_training
-
-        # get the number of images in the dataset
-        def get_num_samples(filename):
-            return sum(1 for _ in tf.python_io.tf_record_iterator(filename))
-        num_examples = 0
-        for filename in filenames:
-            num_examples_in_file = get_num_samples(filename)
-            assert num_examples_in_file > 0
-            num_examples += num_examples_in_file
-        assert num_examples > 0
-        self.num_examples = num_examples
 
         # read the files in parallel
         dataset = tf.data.Dataset.from_tensor_slices(filenames)
@@ -45,18 +34,12 @@ class Pipeline:
             dataset = dataset.shuffle(buffer_size=SHUFFLE_BUFFER_SIZE)
         dataset = dataset.repeat(num_epochs)
 
-        # force the number of batches to be divisible by the number of devices
-        if is_training and num_gpus > 1:
-            total_examples = num_epochs * num_examples
-            total_batches = ((total_examples // batch_size) // num_gpus) * num_gpus
-            dataset = dataset.take(total_batches * batch_size)
-
         # decode and augment data
         dataset = dataset.apply(tf.contrib.data.map_and_batch(
             self.parse_and_preprocess, batch_size=batch_size,
             num_parallel_batches=1, drop_remainder=False
         ))
-        dataset = dataset.prefetch(buffer_size=tf.contrib.data.AUTOTUNE)
+        dataset = dataset.prefetch(buffer_size=1)
 
         self.dataset = dataset
 
@@ -86,19 +69,21 @@ class Pipeline:
         # get a label
         label = tf.to_int32(parsed_features['label'])
 
-        # get groundtruth boxes, they must be in from-zero-to-one format,
-        # also, it assumed that ymin < ymax and xmin < xmax
-        boxes = tf.stack([
-            parsed_features['ymin'], parsed_features['xmin'],
-            parsed_features['ymax'], parsed_features['xmax']
-        ], axis=1)
-        boxes = tf.to_float(boxes)  # shape [num_boxes, 4]
-
         if self.is_training:
+
+            # get groundtruth boxes, they must be in from-zero-to-one format,
+            # also, it assumed that ymin < ymax and xmin < xmax
+            boxes = tf.stack([
+                parsed_features['ymin'], parsed_features['xmin'],
+                parsed_features['ymax'], parsed_features['xmax']
+            ], axis=1)
+            boxes = tf.to_float(boxes)  # shape [num_boxes, 4]
+            # they are only used for data augmentation
+
             image = self.augmentation(image_as_string, boxes)
         else:
             image = tf.image.decode_jpeg(image_as_string, channels=3)
-            image = (1.0 / 255.0) * tf.to_float(image)
+            image = (1.0 / 255.0) * tf.to_float(image)  # to [0, 1] range
             image = resize_keeping_aspect_ratio(image, MIN_DIMENSION)
             image = central_crop(image, crop_height=IMAGE_SIZE, crop_width=IMAGE_SIZE)
 
@@ -118,10 +103,11 @@ class Pipeline:
             image, [IMAGE_SIZE, IMAGE_SIZE],
             method=RESIZE_METHOD
         )
-        image = (1.0 / 255.0) * tf.to_float(image)
+        image = (1.0 / 255.0) * tf.to_float(image)  # to [0, 1] range
 
         # note that color augmentations are very slow!
         image = random_color_manipulations(image, probability=0.05, grayscale_probability=0.01)
+        # image = distort_color_fast(image)
         return image
 
 
@@ -210,21 +196,18 @@ def random_color_manipulations(image, probability=0.1, grayscale_probability=0.1
     return image
 
 
-# def distort_color_fast(image, scope=None):
-#   with tf.name_scope(scope, 'distort_color', [image]):
-#     br_delta = random_ops.random_uniform([], -32./255., 32./255., seed=None)
-#     cb_factor = random_ops.random_uniform(
-#         [], -FLAGS.cb_distortion_range, FLAGS.cb_distortion_range, seed=None)
-#     cr_factor = random_ops.random_uniform(
-#         [], -FLAGS.cr_distortion_range, FLAGS.cr_distortion_range, seed=None)
-
-#     channels = tf.split(axis=2, num_or_size_splits=3, value=image)
-#     red_offset = 1.402 * cr_factor + br_delta
-#     green_offset = -0.344136 * cb_factor - 0.714136 * cr_factor + br_delta
-#     blue_offset = 1.772 * cb_factor + br_delta
-#     channels[0] += red_offset
-#     channels[1] += green_offset
-#     channels[2] += blue_offset
-#     image = tf.concat(axis=2, values=channels)
-#     image = tf.clip_by_value(image, 0., 1.)
-#     return image
+def distort_color_fast(image):
+    with tf.name_scope('distort_color'):
+        br_delta = tf.random_uniform([], -32.0/255.0, 32.0/255.0)
+        cb_factor = tf.random_uniform([], -0.1, 0.1)
+        cr_factor = tf.random_uniform([], -0.1, 0.1)
+        channels = tf.split(axis=2, num_or_size_splits=3, value=image)
+        red_offset = 1.402 * cr_factor + br_delta
+        green_offset = -0.344136 * cb_factor - 0.714136 * cr_factor + br_delta
+        blue_offset = 1.772 * cb_factor + br_delta
+        channels[0] += red_offset
+        channels[1] += green_offset
+        channels[2] += blue_offset
+        image = tf.concat(axis=2, values=channels)
+        image = tf.clip_by_value(image, 0.0, 1.0)
+        return image
