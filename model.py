@@ -4,7 +4,7 @@ from architecture import shufflenet
 
 MOMENTUM = 0.9
 USE_NESTEROV = True
-MOVING_AVERAGE_DECAY = 0.993
+MOVING_AVERAGE_DECAY = 0.995 # 993
 
 
 def model_fn(features, labels, mode, params):

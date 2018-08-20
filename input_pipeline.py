@@ -103,11 +103,9 @@ class Pipeline:
             image, [IMAGE_SIZE, IMAGE_SIZE],
             method=RESIZE_METHOD
         )
-        image = (1.0 / 255.0) * tf.to_float(image)  # to [0, 1] range
 
-        # note that color augmentations are very slow!
-        image = random_color_manipulations(image, probability=0.05, grayscale_probability=0.01)
-        # image = distort_color_fast(image)
+        image = (1.0 / 255.0) * tf.to_float(image)  # to [0, 1] range
+        image = random_color_manipulations(image, probability=0.25, grayscale_probability=0.05)
         return image
 
 
@@ -139,9 +137,9 @@ def get_random_crop(image_as_string, boxes):
     distorted_bounding_box = tf.image.sample_distorted_bounding_box(
         tf.image.extract_jpeg_shape(image_as_string),
         bounding_boxes=tf.expand_dims(boxes, axis=0),
-        min_object_covered=0.5,
+        min_object_covered=0.25,
         aspect_ratio_range=[0.75, 1.33],
-        area_range=[0.1, 1.0],
+        area_range=[0.08, 1.0],
         max_attempts=100,
         use_image_if_no_bounding_boxes=True
     )
@@ -168,16 +166,19 @@ def central_crop(image, crop_height, crop_width):
     return tf.slice(image, [crop_top, crop_left, 0], [crop_height, crop_width, -1])
 
 
-def random_color_manipulations(image, probability=0.1, grayscale_probability=0.1):
+def random_color_manipulations(image, probability=0.1, grayscale_probability=0.1, fast=True):
 
     def manipulate(image):
-        # intensity and order of this operations are kinda random,
-        # so you will need to tune this for you problem
-        image = tf.image.random_brightness(image, 0.1)
-        image = tf.image.random_contrast(image, 0.8, 1.2)
-        image = tf.image.random_hue(image, 0.1)
-        image = tf.image.random_saturation(image, 0.8, 1.2)
-        image = tf.clip_by_value(image, 0.0, 1.0)
+        if not fast:
+            # intensity and order of this operations are kinda random,
+            # so you will need to tune this for you problem
+            image = tf.image.random_brightness(image, 0.15)
+            image = tf.image.random_contrast(image, 0.8, 1.2)
+            image = tf.image.random_hue(image, 0.15)
+            image = tf.image.random_saturation(image, 0.8, 1.2)
+            image = tf.clip_by_value(image, 0.0, 1.0)
+        else:
+            image = distort_color_fast(image)
         return image
 
     def to_grayscale(image):
