@@ -47,29 +47,9 @@ def shufflenet(images, is_training, num_classes=1000, depth_multiplier='1.0'):
             x = slim.conv2d(x, 24, (3, 3), stride=2, scope='Conv1')
             x = slim.max_pool2d(x, (3, 3), stride=2, padding='SAME', scope='MaxPool')
 
-            with tf.variable_scope('Stage2'):
-                x, y = basic_unit_with_downsampling(x, out_channels=initial_depth)
-                for j in range(3):
-                    with tf.variable_scope('unit_%d' % (j + 2)):
-                        x, y = concat_shuffle_split(x, y)
-                        x = basic_unit(x)
-                x = tf.concat([x, y], axis=3)
-
-            with tf.variable_scope('Stage3'):
-                x, y = basic_unit_with_downsampling(x)
-                for j in range(7):
-                    with tf.variable_scope('unit_%d' % (j + 2)):
-                        x, y = concat_shuffle_split(x, y)
-                        x = basic_unit(x)
-                x = tf.concat([x, y], axis=3)
-
-            with tf.variable_scope('Stage4'):
-                x, y = basic_unit_with_downsampling(x)
-                for j in range(3):
-                    with tf.variable_scope('unit_%d' % (j + 2)):
-                        x, y = concat_shuffle_split(x, y)
-                        x = basic_unit(x)
-                x = tf.concat([x, y], axis=3)
+            x = block(x, num_units=4, out_channels=initial_depth, scope='Stage2')
+            x = block(x, num_units=8, scope='Stage3')
+            x = block(x, num_units=4, scope='Stage4')
 
             final_channels = 1024 if depth_multiplier != '2.0' else 2048
             x = slim.conv2d(x, final_channels, (1, 1), stride=1, scope='Conv5')
@@ -82,6 +62,21 @@ def shufflenet(images, is_training, num_classes=1000, depth_multiplier='1.0'):
         weights_initializer=tf.contrib.layers.xavier_initializer()
     )
     return logits
+
+
+def block(x, num_units, out_channels=None, scope='stage'):
+    with tf.variable_scope(scope):
+
+        with tf.variable_scope('unit_1'):
+            x, y = basic_unit_with_downsampling(x, out_channels)
+
+        for j in range(2, num_units + 1):
+            with tf.variable_scope('unit_%d' % j):
+                x, y = concat_shuffle_split(x, y)
+                x = basic_unit(x)
+        x = tf.concat([x, y], axis=3)
+
+    return x
 
 
 def concat_shuffle_split(x, y):
@@ -107,18 +102,17 @@ def basic_unit(x):
 
 
 def basic_unit_with_downsampling(x, out_channels=None):
-    with tf.variable_scope('unit_1'):
-        in_channels = x.shape[3].value
-        out_channels = 2 * in_channels if out_channels is None else out_channels
+    in_channels = x.shape[3].value
+    out_channels = 2 * in_channels if out_channels is None else out_channels
 
-        y = slim.conv2d(x, in_channels, (1, 1), stride=1, scope='conv1x1_before')
-        y = depthwise_conv(y, kernel=3, stride=2, activation_fn=None, scope='depthwise')
-        y = slim.conv2d(y, out_channels // 2, (1, 1), stride=1, scope='conv1x1_after')
+    y = slim.conv2d(x, in_channels, (1, 1), stride=1, scope='conv1x1_before')
+    y = depthwise_conv(y, kernel=3, stride=2, activation_fn=None, scope='depthwise')
+    y = slim.conv2d(y, out_channels // 2, (1, 1), stride=1, scope='conv1x1_after')
 
-        with tf.variable_scope('second_branch'):
-            x = depthwise_conv(x, kernel=3, stride=2, activation_fn=None, scope='depthwise')
-            x = slim.conv2d(x, out_channels // 2, (1, 1), stride=1, scope='conv1x1_after')
-            return x, y
+    with tf.variable_scope('second_branch'):
+        x = depthwise_conv(x, kernel=3, stride=2, activation_fn=None, scope='depthwise')
+        x = slim.conv2d(x, out_channels // 2, (1, 1), stride=1, scope='conv1x1_after')
+        return x, y
 
 
 @tf.contrib.framework.add_arg_scope
