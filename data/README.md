@@ -16,7 +16,6 @@ There are 1281167 train images and 50000 validation images.
 Run `explore_imagenet.ipynb` to see some images and bounding boxes.  
 Also it removes bad boxes and creates metadata files.
 
-
 ### 3. Create `.tfrecords`
 ```
 python create_tfrecords.py \

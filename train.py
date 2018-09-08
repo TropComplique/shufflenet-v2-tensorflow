@@ -11,27 +11,29 @@ Evaluation will happen periodically.
 
 To use it just run:
 python train.py
+
+Parameters below is for training 0.5x version.
 """
 
 # 1281144/128 = 10008.9375
 # so 1 epoch ~ 10000 steps
 
-GPU_TO_USE = '1'
+GPU_TO_USE = '0'
 BATCH_SIZE = 128
 VALIDATION_BATCH_SIZE = 512
-NUM_EPOCHS = 166  # 133
+NUM_EPOCHS = 133  # set 166 for 1.0x version
 TRAIN_DATASET_SIZE = 1281144
 NUM_STEPS = NUM_EPOCHS * (TRAIN_DATASET_SIZE // BATCH_SIZE)
 PARAMS = {
     'train_dataset_path': '/mnt/datasets/imagenet/train_shards/',
     'val_dataset_path': '/mnt/datasets/imagenet/val_shards/',
     'weight_decay': 4e-5,
-    'initial_learning_rate': 0.0625, # 0.5/8
+    'initial_learning_rate': 0.0625,  # 0.5/8
     'decay_steps': NUM_STEPS,
     'end_learning_rate': 1e-6,
-    'model_dir': 'models/run01',  # run00
+    'model_dir': 'models/run00/',
     'num_classes': 1000,
-    'depth_multiplier': '1.0'  # 0.5
+    'depth_multiplier': '0.5'  # set '1.0' for 1.0x version
 }
 
 
