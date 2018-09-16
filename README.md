@@ -34,11 +34,10 @@ For an example of using the pretrained model see: `inference_with_trained_model.
 All measurements were done using batches of size 8, images of size 224x224, and NVIDIA GTX 1080 Ti.  
 See `benchmark_speed.ipynb` for the code.
 
-MobileNet v1 results are taken from [here](https://github.com/tensorflow/models/blob/master/research/slim/nets/mobilenet_v1.md).  
-MobileNet v2 results are taken from [here](https://github.com/tensorflow/models/tree/master/research/slim/nets/mobilenet).
+MobileNet v1 results are taken from [here](https://github.com/tensorflow/models/blob/master/research/slim/nets/mobilenet_v1.md). MobileNet v2 results are taken from [here](https://github.com/tensorflow/models/tree/master/research/slim/nets/mobilenet).
 
 ## Notes
-1. Using moving averages of weights doesn't increases accuracy for some reason.
+1. Using moving averages of weights doesn't increase accuracy for some reason.
 
 ## Requirements
 1. for using the pretrained models: `tensorflow 1.10`
