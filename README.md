@@ -4,8 +4,8 @@ This is an implementation of [ShuffleNet V2: Practical Guidelines for Efficient 
 
 | model | accuracy | top 5 accuracy |
 | --- | --- | --- |
-| 0.5x | 0.608 | 0.822 |
-| 1.0x | 0.689 | 0.885 |
+| 0.5x | 0.607 | 0.822 |
+| 1.0x | 0.688 | 0.886 |
 
 You can download trained checkpoints from [here](https://drive.google.com/drive/folders/1KGIdE8SmR-Af9zheuQ68EhD0ck4h4riH?usp=sharing).
 
@@ -15,6 +15,31 @@ You only need two things:
 2. Checkpoint. You can load it into the graph using `tf.train.Saver` or `tf.train.init_from_checkpoint`.
 
 For an example of using the pretrained model see: `inference_with_trained_model.ipynb`.
+
+## Speed benchmarks
+
+| model | accuracy | images/second |
+| --- | --- | --- |
+| ShuffleNet v2 0.5x | 0.607 | 3192 |
+| ShuffleNet v2 1.0x | 0.689 | 2349 |
+| ShuffleNet v2 1.5x | - | 1855 |
+| ShuffleNet v2 2.0x | - | 1570 |
+| MobileNet v1 0.5x | 0.633 | 3317 |
+| MobileNet v1 0.75x | 0.684 | 2187 |
+| MobileNet v1 1.0x | 0.709 | 1685 |
+| MobileNet v2 0.35x | 0.603 | 2722 |
+| MobileNet v2 0.75x | 0.698 | 1527 |
+| MobileNet v2 1.0x | 0.718 | 1292 |
+
+batches of size 8 with images of size 224x224
+NVIDIA GTX 1080 Ti
+
+MobileNet v1 is taken from [here](https://github.com/tensorflow/models/blob/master/research/slim/nets/mobilenet_v1.md)
+MobileNet v2 is taken from [here](https://github.com/tensorflow/models/tree/master/research/slim/nets/mobilenet)
+
+## Notes
+1. Using moving averages of weights doesn't increases accuracy for some reason.
+2. Inference speed differs greatly from the one in the paper. 
 
 ## Requirements
 1. for using the pretrained models: `tensorflow 1.10`
