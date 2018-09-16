@@ -7,7 +7,7 @@ This is an implementation of [ShuffleNet V2: Practical Guidelines for Efficient 
 | 0.5x | 0.607 | 0.822 |
 | 1.0x | 0.688 | 0.886 |
 
-You can download trained checkpoints from [here](https://drive.google.com/drive/folders/1KGIdE8SmR-Af9zheuQ68EhD0ck4h4riH?usp=sharing).
+You can download ImageNet trained checkpoints from [here](https://drive.google.com/drive/folders/1KGIdE8SmR-Af9zheuQ68EhD0ck4h4riH?usp=sharing).
 
 ## How to use the pretrained models
 You only need two things:
@@ -31,15 +31,14 @@ For an example of using the pretrained model see: `inference_with_trained_model.
 | MobileNet v2 0.75x | 0.698 | 1527 |
 | MobileNet v2 1.0x | 0.718 | 1292 |
 
-batches of size 8 with images of size 224x224
-NVIDIA GTX 1080 Ti
+All measurements were done using batches of size 8, images of size 224x224, and NVIDIA GTX 1080 Ti.  
+See `benchmark_speed.ipynb` for the code.
 
-MobileNet v1 is taken from [here](https://github.com/tensorflow/models/blob/master/research/slim/nets/mobilenet_v1.md)
-MobileNet v2 is taken from [here](https://github.com/tensorflow/models/tree/master/research/slim/nets/mobilenet)
+MobileNet v1 results are taken from [here](https://github.com/tensorflow/models/blob/master/research/slim/nets/mobilenet_v1.md).  
+MobileNet v2 results are taken from [here](https://github.com/tensorflow/models/tree/master/research/slim/nets/mobilenet).
 
 ## Notes
 1. Using moving averages of weights doesn't increases accuracy for some reason.
-2. Inference speed differs greatly from the one in the paper. 
 
 ## Requirements
 1. for using the pretrained models: `tensorflow 1.10`
@@ -48,7 +47,9 @@ MobileNet v2 is taken from [here](https://github.com/tensorflow/models/tree/mast
 ## How to train
 1. Prepare ImageNet. See `data/README.md`.
 2. Set the right parameters in the beginning of `train.py` file.
-2. Run `python train.py`.
+3. Run `python train.py`.
+4. Run `tensorboard` to see the loss curves. Examples of loss curves are in `images/`.
+5. Use `evaluation.ipynb` for the final evaluation on ImageNet.
 
 ## Credit
 The training code is heavily inspired by:  
